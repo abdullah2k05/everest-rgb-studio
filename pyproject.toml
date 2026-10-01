@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "everest-rgb-studio"
+version = "0.1.0"
+description = "Linux RGB control application for the MOUNTAIN Everest 60 keyboard"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.10"
+authors = [{ name = "Everest RGB Studio contributors" }]
+keywords = ["keyboard", "rgb", "hid", "mountain", "everest", "linux"]
+classifiers = [
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3",
+    "Topic :: System :: Hardware :: Hardware Drivers",
+]
+dependencies = [
+    "hidapi>=0.14",
+]
+
+[project.optional-dependencies]
+gui = ["PySide6>=6.6"]
+dev = ["pytest>=8"]
+
+[project.scripts]
+everest-rgb = "everest_rgb.cli:main"
+everest-rgb-gui = "everest_rgb.main:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"everest_rgb.presets.builtin" = ["*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
