@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import colorsys
-import math
 from dataclasses import dataclass
 from typing import Sequence
 

@@ -7,7 +7,7 @@ from everest_rgb.hardware.led_map import (
     SIDE_LED_INDICES,
     led_index_for_key,
 )
-from everest_rgb.models.keyboard import BOARD_WIDTH, KEYS, KEY_BY_NAME, KEYS_BY_ROW
+from everest_rgb.models.keyboard import BOARD_WIDTH, KEY_BY_NAME, KEYS, KEYS_BY_ROW
 
 
 def test_key_count():

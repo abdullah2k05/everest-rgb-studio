@@ -18,7 +18,6 @@ from typing import Any, Callable
 from ..models.lighting import LightingState
 from ..utils.config import Settings
 from .everest60 import Everest60, Everest60Error
-from .hid_device import DeviceDisconnected
 
 log = logging.getLogger(__name__)
 

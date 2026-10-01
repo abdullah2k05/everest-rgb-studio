@@ -8,7 +8,7 @@ through here.
 from __future__ import annotations
 
 import copy
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from typing import Any, Iterable
 
 from ..hardware import protocol

@@ -8,7 +8,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .lighting import LightingState, rgb_to_hex
+from .lighting import LightingState
 
 SCHEMA_VERSION = 1
 
@@ -84,6 +84,7 @@ class Preset:
         return cls.from_dict(data, path=Path(path), builtin=builtin)
 
     def save(self, path: Path | None = None) -> Path:
+        """Write the preset to disk (default: user preset directory)."""
         target = Path(path or self.path or _default_preset_path(self.name))
         target.parent.mkdir(parents=True, exist_ok=True)
         self.modified = time.time()
@@ -102,3 +103,10 @@ class Preset:
         if mode == "custom":
             return f"per-key · brightness {self.state.brightness}%"
         return f"{self.state.effect} ({mode}) · brightness {self.state.brightness}%"
+
+
+def _default_preset_path(name: str) -> Path:
+    from ..utils.logging import data_dir
+
+    slug = "".join(ch if ch.isalnum() or ch in "-_ " else "_" for ch in name)
+    return data_dir() / "presets" / f"{slug.strip().replace(' ', '_') or 'preset'}.json"

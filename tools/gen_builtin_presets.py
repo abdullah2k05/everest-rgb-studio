@@ -15,7 +15,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from everest_rgb.models.keyboard import KEYS, KEY_BY_NAME  # noqa: E402
+from everest_rgb.models.keyboard import KEY_BY_NAME, KEYS  # noqa: E402
 from everest_rgb.models.lighting import LightingState  # noqa: E402
 from everest_rgb.models.preset import Preset  # noqa: E402
 

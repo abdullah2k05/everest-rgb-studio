@@ -16,13 +16,12 @@ from __future__ import annotations
 import argparse
 import logging
 import sys
-import time
 from typing import Sequence
 
 from . import __version__
 from .hardware import detection, protocol
 from .hardware.everest60 import Everest60, Everest60Error
-from .models.lighting import LightingState, hex_to_rgb, rgb_to_hex
+from .models.lighting import hex_to_rgb, rgb_to_hex
 from .utils.logging import setup_logging
 
 log = logging.getLogger(__name__)
@@ -163,7 +162,7 @@ def cmd_status(args: argparse.Namespace) -> int:
     try:
         kb = _connect(args.debug)
     except Everest60Error as exc:
-        print(f"Status:    Disconnected")
+        print("Status:    Disconnected")
         print(f"Error:     {exc}")
         return 1
     try:

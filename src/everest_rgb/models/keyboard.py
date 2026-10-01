@@ -7,7 +7,6 @@ Coordinates are in key units (1u = one alpha key). The key order matches
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterator
 
 from ..hardware.led_map import LED_INDEX_BY_POSITION, NUM_KEYS, NUM_SIDE_LEDS
 

@@ -3,12 +3,12 @@
 from .keyboard import (
     BOARD_HEIGHT,
     BOARD_WIDTH,
-    KEYS,
     KEY_BY_NAME,
+    KEYS,
     KEYS_BY_ROW,
+    SIDE_LED_POSITIONS,
     Key,
     SideLed,
-    SIDE_LED_POSITIONS,
     key_index,
 )
 from .lighting import (

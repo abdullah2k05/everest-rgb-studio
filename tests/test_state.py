@@ -4,7 +4,6 @@ import json
 
 import pytest
 
-from everest_rgb.hardware import protocol
 from everest_rgb.models.keyboard import KEY_BY_NAME, NUM_KEYS  # noqa: F401
 from everest_rgb.models.lighting import LightingState, hex_to_rgb, rgb_to_hex
 from everest_rgb.models.preset import Preset

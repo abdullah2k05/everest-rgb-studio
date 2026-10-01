@@ -1,6 +1,5 @@
 """Effect engine tests - pure rendering, no hardware."""
 
-import pytest
 
 from everest_rgb.effects.base import RenderContext, scale
 from everest_rgb.effects.engine import EffectEngine, get_effect

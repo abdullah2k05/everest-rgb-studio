@@ -6,16 +6,15 @@ import math
 import random
 
 from .base import (
+    RGB,
     Effect,
     RenderContext,
-    RGB,
     brightness_factor,
     key_progress,
     lerp_color,
     scale,
     speed_factor,
     wave_phase,
-    clamp8,
 )
 
 

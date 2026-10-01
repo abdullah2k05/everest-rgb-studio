@@ -13,7 +13,7 @@ import time
 from typing import Callable
 
 from ..models.lighting import LightingState
-from .base import Effect, RenderContext, RGB
+from .base import RGB, Effect, RenderContext
 from .standard import EFFECTS
 
 log = logging.getLogger(__name__)
