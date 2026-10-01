@@ -1,0 +1,5 @@
+# Everest 60 (MOUNTAIN) — allow unprivileged access to the lighting hidraw node
+# Install: sudo cp 99-everest-rgb-studio.rules /etc/udev/rules.d/
+#          sudo udevadm control --reload && sudo udevadm trigger
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3282", ATTRS{idProduct}=="0005", TAG+="uaccess", MODE="0660", GROUP="input"
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3282", ATTRS{idProduct}=="0006", TAG+="uaccess", MODE="0660", GROUP="input"

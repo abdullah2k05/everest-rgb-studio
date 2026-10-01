@@ -6,7 +6,6 @@ import time
 
 import pytest
 
-from everest_rgb.hardware.everest60 import Everest60Error
 from everest_rgb.hardware.service import HardwareService
 from everest_rgb.models.lighting import LightingState
 from everest_rgb.utils.config import Settings

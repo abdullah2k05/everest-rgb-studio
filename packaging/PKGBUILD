@@ -1,0 +1,30 @@
+# Maintainer: Everest RGB Studio contributors
+pkgname=everest-rgb-studio
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="Linux RGB control application for the MOUNTAIN Everest 60 keyboard"
+arch=('any')
+url="https://example.invalid/everest-rgb-studio"
+license=('MIT')
+depends=('python' 'python-hidapi')
+optdepends=('pyside6: GUI' 'libusb-hidapi: usbfs fallback')
+makedepends=('python-build' 'python-installer' 'python-wheel' 'python-setuptools')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "$pkgname-$pkgver"
+  python -m build --wheel --no-isolation
+}
+
+package() {
+  cd "$pkgname-$pkgver"
+  python -m installer --destdir="$pkgdir" dist/*.whl
+
+  install -Dm644 packaging/99-everest-rgb-studio.rules \
+    "$pkgdir/usr/lib/udev/rules.d/99-everest-rgb-studio.rules"
+  install -Dm644 packaging/everest-rgb-studio.desktop \
+    "$pkgdir/usr/share/applications/everest-rgb-studio.desktop"
+
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}
