@@ -25,6 +25,8 @@ package() {
     "$pkgdir/usr/lib/udev/rules.d/99-everest-rgb-studio.rules"
   install -Dm644 packaging/everest-rgb-studio.desktop \
     "$pkgdir/usr/share/applications/everest-rgb-studio.desktop"
+  install -Dm644 packaging/icons/everest-rgb-studio.svg \
+    "$pkgdir/usr/share/icons/hicolor/scalable/apps/everest-rgb-studio.svg"
 
   install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
 }

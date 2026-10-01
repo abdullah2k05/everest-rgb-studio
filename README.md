@@ -63,6 +63,18 @@ python -m venv --system-site-packages .venv
 `--system-site-packages` lets the venv see the distro's `hid` module; if you
 prefer, `pip install hidapi` inside the venv works too.
 
+### Desktop entry (app launcher)
+
+So the GUI shows up in your application launcher:
+
+```bash
+mkdir -p ~/.local/bin ~/.local/share/applications ~/.local/share/icons/hicolor/scalable/apps
+ln -sf /path/to/everest-rgb-studio/.venv/bin/everest-rgb-gui ~/.local/bin/
+ln -sf /path/to/everest-rgb-studio/.venv/bin/everest-rgb     ~/.local/bin/
+cp packaging/everest-rgb-studio.desktop ~/.local/share/applications/
+cp packaging/icons/everest-rgb-studio.svg ~/.local/share/icons/hicolor/scalable/apps/
+```
+
 ### Arch package
 
 ```bash
