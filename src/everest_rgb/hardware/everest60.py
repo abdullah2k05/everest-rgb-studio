@@ -60,7 +60,11 @@ class Everest60:
 
     @property
     def is_connected(self) -> bool:
-        return self._transport is not None and self._transport.is_open
+        return (
+            self.status.connected
+            and self._transport is not None
+            and self._transport.is_open
+        )
 
     @property
     def path(self) -> str:
@@ -145,6 +149,9 @@ class Everest60:
                     verify_echo=verify_echo,
                 )
             except DeviceDisconnected as exc:
+                # Release the stale fd so the service's reconnect loop can
+                # re-enumerate and open the new hidraw node.
+                self.disconnect()
                 self._set_disconnected(str(exc))
                 raise Everest60Error(
                     "Everest 60 disconnected. Reconnect the keyboard and it will "

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import errno
 import logging
+import os
 import time
 
 from . import protocol
@@ -113,6 +114,7 @@ class HidTransport:
         self._log = logger or log
         self._device = None
         self._closed = False
+        self._consecutive_transient = 0
         self.tx_count = 0
         self.rx_count = 0
 
@@ -158,10 +160,22 @@ class HidTransport:
 
     # -- I/O ---------------------------------------------------------------
 
+    def _ensure_alive(self) -> None:
+        """Fail fast when the hidraw node vanished (unplug / re-enumeration).
+
+        A stale fd can otherwise keep 'succeeding' or failing as a transient
+        I/O hiccup forever, leaving the UI connected to nothing.
+        """
+        if not os.path.exists(self._path_str):
+            raise DeviceDisconnected(
+                f"{self._path_str} no longer exists (device removed or re-enumerated)"
+            )
+
     def send_feature_report(self, packet: bytes, expected_cmd: int | None = None) -> bytes:
         """Validate and send one 65 byte feature report, then read the echo."""
         if not self.is_open:
             raise DeviceDisconnected(f"{self._path_str} is not open")
+        self._ensure_alive()
         protocol.validate_packet(packet, expected_cmd)
 
         if self._debug:
@@ -173,7 +187,10 @@ class HidTransport:
             raise _translate(exc, self._path_str) from exc
 
         self.tx_count += 1
-        if written not in (None, -1) and written != len(packet):
+        if written == -1:
+            # hidapi reports write failures as a bare -1 (no exception).
+            raise TransientError(f"{self._path_str}: feature report write failed")
+        if written not in (None,) and written != len(packet):
             raise ReportFailed(
                 f"short write for command {packet[1]:#04x}: {written}/{len(packet)} bytes"
             )
@@ -184,6 +201,7 @@ class HidTransport:
     def read_feature_report(self, size: int | None = None) -> bytes:
         if not self.is_open:
             raise DeviceDisconnected(f"{self._path_str} is not open")
+        self._ensure_alive()
         size = size or self._report_size
         try:
             response = self._device.get_feature_report(protocol.REPORT_ID, size)
@@ -228,8 +246,9 @@ class HidTransport:
                 if attempt + 1 < retries:
                     time.sleep(retry_delay)
                     continue
-                raise
+                break
             if not verify_echo:
+                self._consecutive_transient = 0
                 return None
             try:
                 response = self.read_feature_report()
@@ -240,8 +259,9 @@ class HidTransport:
                 if attempt + 1 < attempts:
                     time.sleep(retry_delay * (attempt + 1))
                     continue
-                raise
+                break
             if len(response) >= 2 and response[1] == expected_cmd:
+                self._consecutive_transient = 0
                 return response
             self._log.debug(
                 "echo mismatch (attempt %d): got cmd %s, want %s",
@@ -251,6 +271,16 @@ class HidTransport:
             )
             time.sleep(retry_delay)
         if last_error is not None:
+            if isinstance(last_error, TransientError):
+                # A single hiccup is survivable (streaming load), but several
+                # fully exhausted exchanges in a row mean the device is gone.
+                self._consecutive_transient += 1
+                if self._consecutive_transient >= 3:
+                    self._consecutive_transient = 0
+                    raise DeviceDisconnected(
+                        f"{self._path_str}: device not responding after repeated "
+                        f"I/O errors"
+                    ) from last_error
             raise last_error
         if response is not None and len(response) >= 2:
             raise ReportFailed(
