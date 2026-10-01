@@ -243,6 +243,7 @@ class MainWindow(QMainWindow):
             detail = "keyboard not found"
         self.conn_detail.setText(detail)
         self.keyboard.set_connected(snapshot.connected)
+        self.keyboard.set_show_side(self.controller.settings.show_side_ring)
         self.controller.notify_status(snapshot)
 
     def _on_message(self, text: str, level: str) -> None:

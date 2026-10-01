@@ -40,6 +40,11 @@ class ReportFailed(TransportError):
     """The device rejected a report or returned an unexpected echo."""
 
 
+class TransientError(TransportError):
+    """Temporary I/O hiccup (queue overrun, interrupted read) - retry, do not
+    treat as a disconnect."""
+
+
 _ERRNO_MAP = {
     errno.EACCES: PermissionDenied,
     errno.EPERM: PermissionDenied,
@@ -48,7 +53,18 @@ _ERRNO_MAP = {
     errno.ENXIO: DeviceDisconnected,
     errno.EBUSY: DeviceBusy,
     errno.EIO: DeviceDisconnected,
+    errno.EAGAIN: TransientError,
+    errno.EWOULDBLOCK: TransientError,
+    errno.EINTR: TransientError,
 }
+
+_TRANSIENT_MARKERS = (
+    "read error",
+    "write error",
+    "resource temporarily unavailable",
+    "try again",
+    "interrupted",
+)
 
 
 def _translate(exc: BaseException, path: str) -> TransportError:
@@ -64,6 +80,8 @@ def _translate(exc: BaseException, path: str) -> TransportError:
             )
         if cls is DeviceBusy:
             return DeviceBusy(f"{path} is busy: {exc}")
+        if cls is TransientError:
+            return TransientError(f"{path}: {exc}")
         return DeviceDisconnected(f"{path} disconnected: {exc}")
     if isinstance(exc, OSError):
         # hidapi reports ENODEV-ish failures as plain OSError strings too.
@@ -72,6 +90,8 @@ def _translate(exc: BaseException, path: str) -> TransportError:
             return DeviceDisconnected(f"{path}: {message}")
         if "Permission" in message or "denied" in message:
             return PermissionDenied(f"{path}: {message}")
+        if any(marker in message.lower() for marker in _TRANSIENT_MARKERS):
+            return TransientError(f"{path}: {message}")
     return TransportError(f"{path}: {exc}")
 
 
@@ -192,20 +212,35 @@ class HidTransport:
         """
         response: bytes | None = None
         last_error: TransportError | None = None
-        for attempt in range(retries):
+        # Transient I/O hiccups (hidapi "read error" under load) get extra
+        # attempts with backoff; real disconnects abort immediately.
+        attempts = max(retries, 6)
+        for attempt in range(attempts):
             try:
                 self.send_feature_report(packet, expected_cmd)
             except TransportError as exc:
                 last_error = exc
                 if isinstance(exc, (DeviceDisconnected, PermissionDenied)):
                     raise
+                if isinstance(exc, TransientError) and attempt + 1 < attempts:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
                 if attempt + 1 < retries:
-                    time.sleep(retry_delay * 10)
+                    time.sleep(retry_delay)
                     continue
                 raise
             if not verify_echo:
                 return None
-            response = self.read_feature_report()
+            try:
+                response = self.read_feature_report()
+            except TransportError as exc:
+                last_error = exc
+                if isinstance(exc, (DeviceDisconnected, PermissionDenied)):
+                    raise
+                if attempt + 1 < attempts:
+                    time.sleep(retry_delay * (attempt + 1))
+                    continue
+                raise
             if len(response) >= 2 and response[1] == expected_cmd:
                 return response
             self._log.debug(

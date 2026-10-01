@@ -179,11 +179,12 @@ class HardwareService:
         """Queue a callable to run on the hardware thread."""
         job = _Job(func=func, args=args, kwargs=kwargs, key=coalesce_key)
         with self._lock:
+            job.key = coalesce_key or f"{id(job)}"
             if coalesce_key:
                 old = self._pending.pop(coalesce_key, None)
                 if old is not None and not old.future.done():
                     old.future.set_result(None)
-            self._pending[coalesce_key or f"{id(job)}"] = job
+            self._pending[job.key] = job
         self._queue.put(job)
         return job.future
 

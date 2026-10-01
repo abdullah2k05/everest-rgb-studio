@@ -17,6 +17,7 @@ from .hid_device import (
     DeviceDisconnected,
     HidTransport,
     PermissionDenied,
+    TransientError,
     TransportError,
 )
 
@@ -152,6 +153,11 @@ class Everest60:
             except PermissionDenied as exc:
                 self._set_disconnected(str(exc))
                 raise Everest60Error(str(exc)) from exc
+            except TransientError as exc:
+                # A temporary I/O hiccup: keep the connection, the next frame
+                # (or retry) will rewrite the whole map.
+                log.debug("transient HID error: %s", exc)
+                raise Everest60Error(f"keyboard I/O temporarily unavailable: {exc}") from exc
             except TransportError as exc:
                 self._set_disconnected(str(exc))
                 raise Everest60Error(str(exc)) from exc
