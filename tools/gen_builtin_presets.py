@@ -50,6 +50,16 @@ def _solid(color: tuple) -> list[str]:
     return [_hex(color)] * len(KEYS)
 
 
+def _ring(colors: list[tuple], count: int = 44) -> list[tuple]:
+    """Smooth gradient of RGB tuples around the 44 LED side ring."""
+    out = []
+    for i in range(count):
+        t = i / max(count - 1, 1) * (len(colors) - 1)
+        j = min(int(t), len(colors) - 2)
+        out.append(_lerp(colors[j], colors[j + 1], t - j))
+    return out
+
+
 def _wasd(base: list[str], accent: str) -> list[str]:
     colors = list(base)
     for name in ("W", "A", "S", "D"):
@@ -77,6 +87,7 @@ def build_presets() -> list[Preset]:
             "Ocean",
             "Deep blue to cyan gradient across the board",
             _gradient([(0, 32, 84), (0, 119, 182), (72, 202, 228)]),
+            side_colors=_ring([(0, 32, 84), (0, 119, 182), (72, 202, 228)]),
         )
     )
     presets.append(
@@ -84,6 +95,7 @@ def build_presets() -> list[Preset]:
             "Cyberpunk",
             "Near-black board, WASD in neon cyan",
             _wasd([_hex((18, 4, 34))] * len(KEYS), "#00F0FF"),
+            side_colors=_ring([(0, 240, 255), (255, 0, 170)]),
         )
     )
     presets.append(
@@ -91,6 +103,7 @@ def build_presets() -> list[Preset]:
             "Sunset",
             "Warm top-to-bottom sunset gradient",
             _gradient([(255, 94, 58), (255, 0, 95), (58, 7, 109)], axis="y"),
+            side_colors=_ring([(255, 94, 58), (255, 0, 95)]),
         )
     )
     presets.append(
@@ -98,17 +111,31 @@ def build_presets() -> list[Preset]:
             "Aurora",
             "Green to violet aurora band",
             _gradient([(16, 255, 144), (0, 196, 255), (150, 60, 255)]),
+            side_colors=_ring([(16, 255, 144), (0, 196, 255), (150, 60, 255)]),
         )
     )
     presets.append(
-        _preset("Minimal White", "Soft white backlight", _solid((232, 232, 232)))
+        _preset(
+            "Minimal White",
+            "Soft white backlight",
+            _solid((232, 232, 232)),
+            side_colors=_ring([(180, 180, 190), (232, 232, 232)]),
+        )
     )
-    presets.append(_preset("Red Alert", "Solid red", _solid((255, 32, 32))))
+    presets.append(
+        _preset(
+            "Red Alert",
+            "Solid red",
+            _solid((255, 32, 32)),
+            side_colors=_ring([(255, 32, 32), (140, 0, 0)]),
+        )
+    )
     presets.append(
         _preset(
             "Deep Blue",
             "Midnight blue gradient",
             _gradient([(0, 12, 64), (0, 40, 160), (20, 90, 255)]),
+            side_colors=_ring([(0, 40, 160), (20, 90, 255)]),
         )
     )
     presets.append(
@@ -116,6 +143,7 @@ def build_presets() -> list[Preset]:
             "Purple Night",
             "Purple to magenta gradient",
             _gradient([(58, 12, 163), (114, 9, 183), (181, 23, 158)]),
+            side_colors=_ring([(58, 12, 163), (181, 23, 158)]),
         )
     )
     presets.append(
@@ -124,6 +152,7 @@ def build_presets() -> list[Preset]:
             "Black through red and orange to yellow",
             _gradient([(12, 0, 0), (180, 20, 0), (255, 140, 0), (255, 230, 90)], axis="y"),
             brightness=100,
+            side_colors=_ring([(180, 20, 0), (255, 140, 0), (255, 230, 90)]),
         )
     )
 
