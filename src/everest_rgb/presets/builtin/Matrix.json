@@ -1,7 +1,7 @@
 {
   "brightness": 100,
-  "speed": 60,
-  "mode": "hardware",
+  "speed": 55,
+  "mode": "software",
   "effect": "matrix",
   "color1": "#00FF50",
   "color2": "#0078FF",
@@ -122,7 +122,7 @@
   "selected_color": "#FFFFFF",
   "schema": 1,
   "name": "Matrix",
-  "description": "Firmware matrix effect (green/blue)",
-  "created": 1790879479.8848822,
-  "modified": 1790879479.8848822
+  "description": "Classic green matrix rain",
+  "created": 1790882416.183478,
+  "modified": 1790882416.183478
 }

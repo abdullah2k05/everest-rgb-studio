@@ -1,12 +1,12 @@
 {
   "brightness": 100,
-  "speed": 65,
+  "speed": 55,
   "mode": "hardware",
-  "effect": "wave",
-  "color1": "#00A8FF",
-  "color2": "#AA00FF",
+  "effect": "tornado",
+  "color1": "#7800BE",
+  "color2": "#B428FF",
   "color_mode": 16,
-  "direction": "left_to_right",
+  "direction": "clockwise",
   "keys": {
     "0": "#000000",
     "1": "#000000",
@@ -121,8 +121,8 @@
   ],
   "selected_color": "#FFFFFF",
   "schema": 1,
-  "name": "Neon Wave",
-  "description": "Firmware wave effect (blue/purple)",
-  "created": 1790879479.8850677,
-  "modified": 1790879479.8850677
+  "name": "Purple Tornado",
+  "description": "Purple tornado",
+  "created": 1790882416.1857522,
+  "modified": 1790882416.1857522
 }
