@@ -340,9 +340,29 @@ class HardwareService:
         side: list = list(state.side_colors)
         if state.mode == "software":
             keys, side = _render_frame(state)
-        self.controller.apply_custom_map(
-            keys, side_colors=side, brightness=state.brightness
-        )
+        # Retry custom map transfer on transient errors (entire sequence)
+        self._retry_custom_map(keys, side, state.brightness)
+
+    def _retry_custom_map(self, keys, side_colors, brightness, max_attempts: int = 3):
+        """Retry the entire custom map transfer on transient errors."""
+        import time
+        from ..hardware.hid_device import TransientError
+        from ..hardware.everest60 import Everest60Error
+
+        last_exc = None
+        for attempt in range(max_attempts):
+            try:
+                self.controller.apply_custom_map(keys, side_colors=side_colors, brightness=brightness)
+                return
+            except TransientError as exc:
+                last_exc = exc
+                if attempt + 1 < max_attempts:
+                    time.sleep(0.01 * (attempt + 1))  # brief backoff
+                    continue
+            except Everest60Error:
+                # Non-transient errors (disconnect, permission) - don't retry
+                raise
+        raise last_exc
 
     # -- convenience for CLI ----------------------------------------------
 

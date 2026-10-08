@@ -99,22 +99,42 @@ def _translate(exc: BaseException, path: str) -> TransportError:
 class HidTransport:
     """Single open HID device with validated feature report I/O."""
 
+    #: Minimum observed gap that lets colour payloads through. The firmware
+    #: needs wall-clock time after a feature report even though the echo comes
+    #: back: back-to-back writes are ACKed and then dropped, while 10 ms gaps
+    #: apply every time. 20 ms leaves margin for a slower firmware build.
+    DEFAULT_INTER_PACKET_DELAY = 0.020
+
+    #: Quiet period after ``0x03`` before the next command. The reset blanks the
+    #: LEDs and the firmware restarts its lighting task: 20 ms is still too soon
+    #: (the following packets are acknowledged and then dropped, leaving the
+    #: board dark), 60 ms and longer apply reliably. 200 ms is the value the
+    #: working capture used.
+    DEFAULT_RESET_SETTLE = 0.200
+
     def __init__(
         self,
         path: bytes | str,
         *,
         report_size: int = protocol.REPORT_SIZE,
+        inter_packet_delay: float | None = None,
+        reset_settle: float | None = None,
         debug: bool = False,
         logger: logging.Logger | None = None,
     ):
         self._path_bytes = path if isinstance(path, bytes) else path.encode()
         self._path_str = self._path_bytes.decode(errors="replace")
         self._report_size = report_size
+        self._inter_packet_delay = (
+            self.DEFAULT_INTER_PACKET_DELAY if inter_packet_delay is None else inter_packet_delay
+        )
+        self._reset_settle = self.DEFAULT_RESET_SETTLE if reset_settle is None else reset_settle
         self._debug = debug
         self._log = logger or log
         self._device = None
         self._closed = False
         self._consecutive_transient = 0
+        self._handshake_done = False
         self.tx_count = 0
         self.rx_count = 0
 
@@ -140,10 +160,42 @@ class HidTransport:
             raise _translate(exc, self._path_str) from exc
         self._device = device
         self._closed = False
+        self._handshake_done = False
         self._log.debug("opened %s", self._path_str)
+
+    def _ensure_handshake(self) -> None:
+        """Reset the lighting state machine before the first colour traffic.
+
+        Without this the firmware ACKs ``0x17``/``0x35`` but drops the colour
+        payload, so effects switch while the requested colour never appears -
+        the exact failure this transport exists to prevent.
+
+        Deferred until the first command rather than sent from ``open()``:
+        ``0x03`` blanks the LEDs, so merely connecting (``status``, a probe)
+        must not turn the keyboard dark. One handshake per open matches the
+        OpenRGB controller.
+        """
+        if self._handshake_done:
+            return
+        self._handshake_done = True
+        self._log.debug("sending reset handshake")
+        try:
+            self.exchange(protocol.build_reset(), expected_cmd=protocol.CMD_RESET)
+            if self._reset_settle > 0:
+                time.sleep(self._reset_settle)
+        except ReportFailed as exc:
+            self._handshake_done = False
+            raise ReportFailed(
+                f"{self._path_str}: reset handshake (0x03) not acknowledged - "
+                f"the keyboard will ignore colour changes: {exc}"
+            ) from exc
+        except BaseException:
+            self._handshake_done = False
+            raise
 
     def close(self) -> None:
         self._closed = True
+        self._handshake_done = False
         device, self._device = self._device, None
         if device is not None:
             try:
@@ -213,6 +265,11 @@ class HidTransport:
             self._log.debug("RX %s", response.hex(" "))
         return response
 
+    def _pace(self) -> None:
+        """Give the firmware time to finish with the packet just written."""
+        if self._inter_packet_delay > 0:
+            time.sleep(self._inter_packet_delay)
+
     def exchange(
         self,
         packet: bytes,
@@ -225,9 +282,13 @@ class HidTransport:
         """Send a packet and wait for the command echo, retrying on mismatch.
 
         The keyboard echoes the command byte at response[1]. Round trips are
-        fast (~0.4 ms measured), so no artificial delay is inserted - we only
-        pause when the echo does not match yet (device still busy).
+        fast (~0.4 ms measured), but the firmware still needs wall-clock time
+        before the next packet: back-to-back writes are echoed and then
+        discarded, which is why every exchange is followed by
+        ``inter_packet_delay``. ``0x03`` is also sent automatically before the
+        first packet of a session.
         """
+        self._ensure_handshake()
         response: bytes | None = None
         last_error: TransportError | None = None
         # Transient I/O hiccups (hidapi "read error" under load) get extra
@@ -249,6 +310,7 @@ class HidTransport:
                 break
             if not verify_echo:
                 self._consecutive_transient = 0
+                self._pace()
                 return None
             try:
                 response = self.read_feature_report()
@@ -262,6 +324,7 @@ class HidTransport:
                 break
             if len(response) >= 2 and response[1] == expected_cmd:
                 self._consecutive_transient = 0
+                self._pace()
                 return response
             self._log.debug(
                 "echo mismatch (attempt %d): got cmd %s, want %s",

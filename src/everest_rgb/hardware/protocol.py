@@ -22,6 +22,7 @@ MAGIC = (0x46, 0x23, 0xEA)
 MAGIC_BYTES = bytes(MAGIC)
 
 # Commands
+CMD_RESET = 0x03
 CMD_SET_MODE = 0x16
 CMD_MODE_DETAILS = 0x17
 CMD_COMMIT = 0x1A
@@ -129,6 +130,20 @@ def finalize(buf: list[int], expected_cmd: int) -> bytes:
 # ---------------------------------------------------------------------------
 # Builders
 # ---------------------------------------------------------------------------
+
+def build_reset() -> bytes:
+    """0x03 - handshake, sent once per connection before any lighting command.
+
+    Measured on hardware: without it the keyboard acknowledges ``0x17`` and
+    ``0x35`` (echo in response byte 1) but discards every colour byte, so only
+    ``0x16`` effect selection reaches the LEDs. Sending this first makes colour
+    payloads take effect immediately. The unlocked state survives a replug, so
+    this is cheap insurance on every open rather than a fix-up for a stuck unit.
+
+    OpenRGB's Mountain 60 controller sends the same packet in its constructor.
+    """
+    return finalize(_make_buf(CMD_RESET), CMD_RESET)
+
 
 def build_set_mode(effect: int) -> bytes:
     """0x16 - activate a firmware effect."""

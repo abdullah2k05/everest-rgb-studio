@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import logging
 import threading
+import time
 from dataclasses import dataclass
 
 from . import detection, protocol
@@ -48,12 +49,21 @@ class Everest60Error(RuntimeError):
 class Everest60:
     """Thread-confined controller: use one instance from one worker thread."""
 
+    #: Wait after 0x16 activates a *different* effect. The firmware restarts
+    #: that effect's renderer and drops the 0x17 that follows - it still echoes
+    #: the command, so the write looks successful while the requested colour is
+    #: silently replaced by the effect's own palette (measured: 20 ms is too
+    #: soon, 800 ms applies). Re-sending the effect that is already running
+    #: needs no delay, so live brightness/speed changes stay fast.
+    EFFECT_SWITCH_SETTLE = 0.8
+
     def __init__(self, *, debug: bool = False, retries: int = 3):
         self._debug = debug
         self._retries = retries
         self._transport: HidTransport | None = None
         self._info: detection.DeviceInfo | None = None
         self._lock = threading.RLock()
+        self._active_effect: int | None = None
         self.status = DeviceStatus()
 
     # -- lifecycle ---------------------------------------------------------
@@ -88,6 +98,10 @@ class Everest60:
                     )
                 transport = HidTransport(info.path, debug=self._debug)
                 transport.open()
+                # a fresh handle means unknown firmware state: the lighting task
+                # may have restarted, so the effect remembered from the previous
+                # connection cannot be assumed to still be running
+                self._active_effect = None
             except PermissionDenied as exc:
                 self._set_disconnected(str(exc))
                 raise Everest60Error(str(exc)) from exc
@@ -120,6 +134,7 @@ class Everest60:
         with self._lock:
             transport, self._transport = self._transport, None
             self._info = None
+            self._active_effect = None
             if transport is not None:
                 transport.close()
             if self.status.connected:
@@ -174,6 +189,15 @@ class Everest60:
     def _send(self, packet: bytes) -> None:
         self._exchange(packet, verify_echo=True)
 
+    def _set_mode(self, effect: int) -> None:
+        """0x16, waiting for the firmware to finish switching effects."""
+        switching = effect != self._active_effect
+        self._send(protocol.build_set_mode(effect))
+        if switching:
+            self._active_effect = effect
+            if self.EFFECT_SWITCH_SETTLE > 0:
+                time.sleep(self.EFFECT_SWITCH_SETTLE)
+
     # -- firmware effect control ------------------------------------------
 
     def set_off(self, *, brightness: int = 100) -> None:
@@ -211,7 +235,7 @@ class Everest60:
             color_mode = protocol.COLOR_SINGLE if effect == protocol.EFFECT_STATIC else protocol.COLOR_DUAL
 
         with self._lock:
-            self._send(protocol.build_set_mode(effect))
+            self._set_mode(effect)
             self._send(
                 protocol.build_mode_details(
                     effect,
@@ -268,7 +292,7 @@ class Everest60:
         with self._lock:
             # Custom mode must not send 0x17: it would flash a default color
             # over the map before it lands.
-            self._send(protocol.build_set_mode(protocol.EFFECT_CUSTOM))
+            self._set_mode(protocol.EFFECT_CUSTOM)
             self._send(protocol.build_commit(protocol.EFFECT_CUSTOM))
             self._send(protocol.build_custom_begin(brightness))
             for packet in protocol.build_custom_map_packets(stream):

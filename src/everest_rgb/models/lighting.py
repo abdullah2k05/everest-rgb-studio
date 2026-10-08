@@ -145,19 +145,20 @@ class LightingState:
 
         keys = data.get("keys") or {}
         if isinstance(keys, dict):
-            # Accept both {"0": "#RRGGBB"} and {"W": "#RRGGBB"} forms.
+            # Accept both {"0": "#RRGGBB"} (logical index) and {"W": "#RRGGBB"} (key name) forms.
             from .keyboard import KEY_BY_NAME
 
             for key_ref, value in keys.items():
                 try:
-                    index = (
-                        KEY_BY_NAME[key_ref].index
-                        if str(key_ref) in KEY_BY_NAME
-                        else int(key_ref)
-                    )
+                    # Numeric string -> logical index (0-63). Key name -> KEY_BY_NAME lookup.
+                    if str(key_ref).isdigit():
+                        index = int(key_ref)
+                    else:
+                        index = KEY_BY_NAME[str(key_ref)].index
                 except (KeyError, ValueError):
                     continue
-                state.set_key_color(index, hex_to_rgb(str(value)))
+                if 0 <= index < NUM_KEYS:
+                    state.set_key_color(index, hex_to_rgb(str(value)))
         elif isinstance(keys, list):
             for i, value in enumerate(keys[:NUM_KEYS]):
                 state.set_key_color(i, hex_to_rgb(str(value)))

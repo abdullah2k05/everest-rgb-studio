@@ -39,7 +39,22 @@ Measured latency with `python-hidapi` 0.14: **~0.4 ms per round trip**
 (~1900 packets/s) occasional transient `read error`s occur; these are retried
 with backoff and never treated as a disconnect.
 
+The wire is fast, the firmware is not: see [Timing](#timing) below for the
+delays the device requires regardless of how quickly a round trip completes.
+
 ## Commands
+
+### `0x03` Reset (handshake)
+
+```
+[1]=0x03  [2..4]=magic   rest zero
+```
+
+Sent once per connection, immediately before the first lighting command.
+Without it the keyboard acknowledges `0x17` and `0x35` but discards every
+colour byte: effects still switch, while the requested colour never appears.
+`0x03` blanks the LEDs, so the transport sends it lazily - merely opening the
+device (`status`, a probe) must not turn the board dark.
 
 ### `0x16` SetMode (activate an effect)
 
@@ -68,6 +83,25 @@ Colors are omitted when color mode is rainbow.
 
 Sent after mode changes and after every custom color map. Without it a freshly
 written map may not latch.
+
+## Timing
+
+Every one of these delays is enforced by the firmware, not the USB link. Skipping
+any of them fails *silently*: the command echoes, the write succeeds, and the
+board just does not do what was asked.
+
+| Wait | Where | Duration | If skipped |
+|---|---|---|---|
+| after `0x03` | `HidTransport._ensure_handshake` | 200 ms (60 ms measured sufficient, 20 ms is not) | lighting task still restarting; the next packets are ACKed then dropped, board stays dark |
+| between packets | `HidTransport.exchange` | 20 ms (10 ms sufficient) | feature reports ACKed then dropped, colour payloads lost |
+| after `0x16` to a *different* effect | `Everest60._set_mode` | 800 ms (20 ms is not) | effect restarts with its own palette, `0x17` colours ignored |
+
+Re-sending the effect that is already running skips the 800 ms wait, so dragging
+a brightness or speed slider stays responsive. Reconnecting clears the remembered
+effect, because the firmware has forgotten it too.
+
+`0x03` is sent lazily on the first command after `open()` rather than from
+`open()` itself - see [Commands](#commands).
 
 ## Firmware effect codes
 
@@ -140,5 +174,7 @@ mouse HID:    interface 1, usage 0x01/0x02
 python-hidapi works; send_feature_report() works
 65-byte feature reports; command 0x16 echoes in response byte 1
 static RGB control, per-key maps, firmware effects, side ring all confirmed
-full 64-key map + headers: 10 packets, ~5 ms wall time
+0x03 handshake is mandatory: without it every colour is ACKed then dropped
+three enforced waits (200 ms / 20 ms / 800 ms) - see Timing
+full 64-key map + headers: 10 packets, ~1.4 s wall end-to-end (incl. waits)
 ```

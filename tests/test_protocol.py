@@ -13,6 +13,15 @@ def test_report_size_and_magic():
     assert bytes(packet[2:5]) == bytes([0x46, 0x23, 0xEA])
 
 
+def test_reset_layout():
+    packet = protocol.build_reset()
+    assert len(packet) == protocol.REPORT_SIZE
+    assert packet[0] == 0x00
+    assert packet[1] == protocol.CMD_RESET == 0x03
+    assert bytes(packet[2:5]) == bytes([0x46, 0x23, 0xEA])
+    assert packet[5:] == bytes(protocol.REPORT_SIZE - 5)
+
+
 def test_set_mode_layout():
     packet = protocol.build_set_mode(protocol.EFFECT_WAVE)
     assert packet[5] == 0x01

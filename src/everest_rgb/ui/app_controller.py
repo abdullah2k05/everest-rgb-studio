@@ -6,6 +6,7 @@ keyboard gets written to. Hardware work happens on the service thread.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from collections import deque
 
@@ -67,6 +68,8 @@ class AppController(QObject):
         self._undo: deque[dict] = deque(maxlen=UNDO_LIMIT)
         self._redo: deque[dict] = deque(maxlen=UNDO_LIMIT)
         self._last_status: ServiceSnapshot | None = None
+        self._apply_future: concurrent.futures.Future | None = None
+        self._apply_was_preset_load = False
 
     # -- lifecycle ---------------------------------------------------------
 
@@ -207,9 +210,24 @@ class AppController(QObject):
         self.engine.invalidate()
         # One apply gives instant feedback; for software effects the engine
         # keeps streaming frames afterwards.
-        self.service.apply_state(self.state.copy())
+        future = self.service.apply_state(self.state.copy())
+        self._apply_future = future
+        future.add_done_callback(self._on_apply_done)
         if self.settings.remember_last_state:
             self.state_store.save(self.state.to_dict())
+
+    def _on_apply_done(self, future: concurrent.futures.Future) -> None:
+        """Called when hardware apply completes (success or failure)."""
+        try:
+            future.result()
+            log.debug("hardware apply succeeded")
+            if self._apply_was_preset_load:
+                self.message.emit(f"Preset '{self.state.effect}' applied", "info")
+                self._apply_was_preset_load = False
+        except Exception as exc:  # noqa: BLE001 - surfaced to user
+            log.warning("hardware apply failed: %s", exc)
+            self.message.emit(f"Failed to apply to keyboard: {exc}", "error")
+            self._apply_was_preset_load = False
 
     def _preview_state(self) -> LightingState:
         preview = self.state.copy()
@@ -273,8 +291,8 @@ class AppController(QObject):
         self.state = preset.state.copy()
         self._redo.clear()
         self.stateChanged.emit()
+        self._apply_was_preset_load = True
         self.apply()
-        self.message.emit(f"Preset '{preset.name}' loaded", "info")
 
     def save_preset(self, name: str, description: str = "") -> Preset:
         preset = Preset.from_state(name, self.state, description)
