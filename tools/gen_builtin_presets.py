@@ -8,14 +8,18 @@ Run from the repository root:
 
 from __future__ import annotations
 
+import colorsys
 import json
+import math
+import random
 import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from everest_rgb.models.keyboard import KEY_BY_NAME, KEYS  # noqa: E402
+from everest_rgb.hardware.protocol import COLOR_DUAL, COLOR_SINGLE  # noqa: E402
+from everest_rgb.models.keyboard import BOARD_HEIGHT, BOARD_WIDTH, KEY_BY_NAME, KEYS  # noqa: E402
 from everest_rgb.models.lighting import LightingState  # noqa: E402
 from everest_rgb.models.preset import Preset  # noqa: E402
 
@@ -67,12 +71,147 @@ def _wasd(base: list[str], accent: str) -> list[str]:
     return colors
 
 
+# ---------------------------------------------------------------------------
+# composition helpers (for the showcase presets below)
+# ---------------------------------------------------------------------------
+
+
+def _ramp(colors: list[tuple], t: float) -> tuple:
+    """Interpolate a stop list at 0..1."""
+    t = max(0.0, min(1.0, t)) * (len(colors) - 1)
+    i = min(int(t), len(colors) - 2)
+    return _lerp(colors[i], colors[i + 1], t - i)
+
+
+def _each_rgb(fn) -> list[tuple]:
+    """Evaluate ``fn(key) -> (r, g, b)`` for every key."""
+    return [tuple(fn(key)) for key in KEYS]
+
+
+def _rgb(colors: list[str]) -> list[tuple]:
+    return [tuple(int(c[i : i + 2], 16) for i in (1, 3, 5)) for c in colors]
+
+
+def _each(fn) -> list[str]:
+    return [_hex(c) for c in _each_rgb(fn)]
+
+
+def _hsv(h: float, s: float = 1.0, v: float = 1.0) -> tuple:
+    r, g, b = colorsys.hsv_to_rgb(h % 1.0, max(0.0, min(1.0, s)), max(0.0, min(1.0, v)))
+    return (round(r * 255), round(g * 255), round(b * 255))
+
+
+def _radial(colors: list[tuple], *, cx: float = 7.5, cy: float = 2.5, power: float = 1.0):
+    """Glow spreading outwards from a focal key position."""
+    far = max(math.hypot(k.center[0] - cx, k.center[1] - cy) for k in KEYS) or 1.0
+
+    def pick(key):
+        d = math.hypot(key.center[0] - cx, key.center[1] - cy) / far
+        return _ramp(colors, d**power)
+
+    return _each(pick)
+
+
+def _diagonal(colors: list[tuple], *, flip_y: bool = False, power: float = 1.0) -> list[str]:
+    """Sweep corner to corner (top-left first, or bottom-left when flipped)."""
+
+    def pick(key):
+        y = key.center[1] / BOARD_HEIGHT
+        if flip_y:
+            y = 1.0 - y
+        return _ramp(colors, ((key.center[0] / BOARD_WIDTH + y) / 2.0) ** power)
+
+    return _each(pick)
+
+
+def _blobs(base: tuple, blobs: list[tuple]) -> list[str]:
+    """Additive light pools: ``(cx, cy, radius, color, strength)`` each."""
+
+    def pick(key):
+        r, g, b = base
+        for cx, cy, radius, color, strength in blobs:
+            d = math.hypot(key.center[0] - cx, key.center[1] - cy) / radius
+            if d >= 1.0:
+                continue
+            f = (1.0 - d) ** 2 * strength
+            r += color[0] * f
+            g += color[1] * f
+            b += color[2] * f
+        return (min(255, round(r)), min(255, round(g)), min(255, round(b)))
+
+    return _each(pick)
+
+
+def _accent(colors: list[str], names, color: tuple) -> list[str]:
+    """Force specific keys to a single colour."""
+    out = list(colors)
+    for name in names:
+        out[KEY_BY_NAME[name].index] = _hex(color)
+    return out
+
+
+def _sparkle(colors: list[str], *, count: int, seed: int, star: tuple, pool=None) -> list[str]:
+    """Scatter a handful of bright keys (embers, petals, stars)."""
+    out = list(colors)
+    rng = random.Random(seed)
+    indices = list(range(len(KEYS))) if pool is None else list(pool)
+    for i in rng.sample(indices, min(count, len(indices))):
+        out[i] = _hex(star)
+    return out
+
+
+def _checker(frame: tuple, a: tuple, b: tuple) -> list[str]:
+    """Neon checkerboard; anything 1.5u or wider becomes the dark frame."""
+
+    def pick(key):
+        if key.w >= 1.5:
+            return frame
+        return a if (key.row + key.col) % 2 == 0 else b
+
+    return _each(pick)
+
+
+def _spectrum() -> list[str]:
+    """Full HSV wheel, top-left to bottom-right."""
+
+    def pick(key):
+        t = (
+            key.center[0] / BOARD_WIDTH + key.center[1] / BOARD_HEIGHT
+        ) / 2.0
+        return _hsv(t)
+
+    return _each(pick)
+
+
+def _spectrum_ring(count: int = 45) -> list[tuple]:
+    return [_hsv(i / (count - 1)) for i in range(count)]
+
+
+def _software(name: str, description: str, effect: str, **overrides) -> Preset:
+    state = LightingState()
+    state.mode = "software"
+    state.effect = effect
+    for key, value in overrides.items():
+        setattr(state, key, value)
+    return Preset.from_state(name, state, description)
+
+
+def _firmware(name: str, description: str, effect: str, **overrides) -> Preset:
+    state = LightingState()
+    state.mode = "hardware"
+    state.effect = effect
+    for key, value in overrides.items():
+        setattr(state, key, value)
+    return Preset.from_state(name, state, description)
+
+
 def _preset(name: str, description: str, colors: list[str], **overrides) -> Preset:
     state = LightingState()
     state.mode = overrides.pop("mode", "custom")
     state.effect = overrides.pop("effect", "static")
     state.key_colors = [
-        tuple(int(colors[i][j : j + 2], 16) for j in (1, 3, 5)) for i in range(len(KEYS))
+        (int(colors[i][1:3], 16), int(colors[i][3:5], 16), int(colors[i][5:7], 16))
+        for i in range(len(KEYS))
     ]
     for key, value in overrides.items():
         setattr(state, key, value)
@@ -180,14 +319,286 @@ def build_presets() -> list[Preset]:
         Preset.from_state("Neon Wave", wave, "Firmware wave effect (blue/purple)")
     )
 
+    presets.extend(showcase_presets())
+    return presets
+
+
+def showcase_presets() -> list[Preset]:
+    """High-contrast looks built for the "wait, that's a keyboard?" reaction."""
+    presets: list[Preset] = []
+
+    # -- static showpieces -------------------------------------------------
+
+    presets.append(
+        _preset(
+            "Ultraviolet",
+            "Violet bloom radiating from the centre of the board",
+            _radial(
+                [(255, 240, 255), (196, 108, 255), (112, 16, 250), (26, 0, 64)],
+                cx=7.5,
+                cy=2.3,
+                power=1.0,
+            ),
+            brightness=100,
+            side_colors=_ring([(46, 0, 108), (152, 40, 255), (255, 128, 255), (46, 0, 108)]),
+        )
+    )
+
+    synth = _gradient([(26, 0, 78), (134, 0, 152), (255, 44, 132), (255, 156, 64)], axis="y")
+    synth = _accent(
+        synth,
+        ("ESC", "W", "A", "S", "D", "ENTER", "SPACE", "UP", "DOWN", "LEFT", "RIGHT"),
+        (0, 240, 255),
+    )
+    presets.append(
+        _preset(
+            "Synthwave",
+            "Miami sunset sweep cut with cyan neon accents",
+            synth,
+            brightness=100,
+            side_colors=_ring([(26, 0, 78), (255, 44, 132), (255, 156, 64), (0, 240, 255)]),
+        )
+    )
+
+    nuclear = _radial(
+        [(240, 255, 180), (150, 255, 0), (34, 200, 0), (0, 38, 10)],
+        cx=3.8,
+        cy=2.2,
+        power=1.0,
+    )
+    nuclear = _accent(nuclear, ("W", "A", "S", "D"), (255, 255, 238))
+    presets.append(
+        _preset(
+            "Nuclear",
+            "Toxic glow pooled over the gaming cluster, white-hot WASD",
+            nuclear,
+            brightness=100,
+            side_colors=_ring([(150, 255, 0), (236, 255, 90), (20, 140, 0), (150, 255, 0)]),
+        )
+    )
+
+    lava = _gradient([(10, 2, 0), (76, 8, 0), (184, 38, 0), (255, 120, 0), (255, 220, 96)], axis="y")
+    lava = _sparkle(
+        lava,
+        count=5,
+        seed=7,
+        star=(255, 198, 88),
+        pool=[k.index for k in KEYS if k.row <= 1],
+    )
+    presets.append(
+        _preset(
+            "Lava Flow",
+            "Cracked black crust over a molten floor, embers scattered",
+            lava,
+            brightness=100,
+            side_colors=_ring([(255, 60, 0), (255, 170, 40), (90, 14, 0), (255, 60, 0)]),
+        )
+    )
+
+    presets.append(
+        _preset(
+            "Prism",
+            "Full-spectrum diagonal, every hue edge to edge",
+            _spectrum(),
+            brightness=100,
+            side_colors=_spectrum_ring(),
+        )
+    )
+
+    nebula = _blobs(
+        (5, 4, 15),
+        [
+            (4.6, 1.5, 7.0, (255, 0, 140), 0.90),
+            (11.4, 3.6, 6.5, (0, 205, 255), 0.85),
+            (8.2, 0.7, 5.5, (130, 30, 255), 0.75),
+            (2.2, 4.4, 4.5, (255, 130, 20), 0.40),
+        ],
+    )
+    nebula = _sparkle(nebula, count=9, seed=4242, star=(255, 252, 255))
+    presets.append(
+        _preset(
+            "Nebula",
+            "Deep space with magenta and cyan gas clouds between the stars",
+            nebula,
+            brightness=100,
+            side_colors=_ring([(30, 0, 64), (200, 0, 160), (0, 190, 255), (30, 0, 64)]),
+        )
+    )
+
+    gold = _diagonal(
+        [(6, 5, 3), (74, 54, 8), (200, 154, 22), (255, 220, 84), (255, 251, 222)],
+        flip_y=True,
+        power=0.75,
+    )
+    gold = _accent(gold, ("ESC", "ENTER", "SPACE"), (255, 252, 236))
+    presets.append(
+        _preset(
+            "Midnight Gold",
+            "Black to liquid gold with three white-hot focal keys",
+            gold,
+            brightness=100,
+            side_colors=_ring([(18, 14, 6), (255, 200, 70), (120, 90, 20), (18, 14, 6)]),
+        )
+    )
+
+    frost = _gradient([(238, 252, 255), (140, 232, 255), (18, 170, 246), (0, 46, 118)], axis="y")
+    frost = _accent(frost, ("W", "A", "S", "D", "UP", "DOWN", "LEFT", "RIGHT"), (255, 255, 255))
+    presets.append(
+        _preset(
+            "Frostbite",
+            "White frost melting into deep-sea blue, pure white WASD and arrows",
+            frost,
+            brightness=100,
+            side_colors=_ring([(238, 252, 255), (0, 190, 255), (0, 60, 140), (238, 252, 255)]),
+        )
+    )
+
+    sakura = _gradient([(255, 226, 241), (255, 150, 198), (240, 62, 142), (146, 16, 82)], axis="x")
+    sakura = _sparkle(
+        sakura,
+        count=6,
+        seed=99,
+        star=(255, 255, 255),
+        pool=[k.index for k in KEYS if k.center[0] >= 7.5],
+    )
+    presets.append(
+        _preset(
+            "Sakura",
+            "Cherry-blossom pink sweeping left to right, petals adrift",
+            sakura,
+            brightness=100,
+            side_colors=_ring([(255, 190, 220), (255, 70, 150), (146, 16, 82), (255, 190, 220)]),
+        )
+    )
+
+    arcade = _checker((48, 8, 78), (0, 236, 255), (255, 26, 160))
+    arcade = _accent(arcade, ("ESC", "ENTER", "UP", "DOWN", "LEFT", "RIGHT"), (255, 224, 0))
+    presets.append(
+        _preset(
+            "Arcade",
+            "Neon checkerboard on black, yellow coin-slot accents",
+            arcade,
+            brightness=100,
+            side_colors=_ring([(0, 236, 255), (255, 26, 160), (255, 224, 0), (0, 236, 255)]),
+        )
+    )
+
+    # -- animated (host-rendered) ------------------------------------------
+
+    presets.append(
+        _software(
+            "Wildfire",
+            "Host-rendered flames licking up the whole board",
+            "fire",
+            brightness=100,
+            speed=80,
+            color1=(255, 150, 10),
+            color2=(120, 8, 0),
+            key_colors=_rgb(_gradient([(10, 0, 0), (180, 30, 0), (255, 150, 10), (255, 235, 120)], axis="y")),
+            side_colors=_ring([(255, 60, 0), (255, 170, 40), (60, 6, 0), (255, 60, 0)]),
+        )
+    )
+
+    presets.append(
+        _software(
+            "Prismatic Wave",
+            "Cyan and magenta light sweeping edge to edge",
+            "wave",
+            brightness=100,
+            speed=85,
+            direction="left_to_right",
+            color1=(0, 240, 255),
+            color2=(255, 0, 170),
+            color_mode=COLOR_DUAL,
+            key_colors=_rgb(_gradient([(0, 240, 255), (255, 0, 170)], axis="x")),
+            side_colors=_ring([(0, 240, 255), (255, 0, 170), (0, 240, 255)]),
+        )
+    )
+
+    presets.append(
+        _software(
+            "Riptide",
+            "Host-rendered ocean swells rolling across the keys",
+            "ocean",
+            brightness=100,
+            speed=70,
+            color1=(0, 190, 255),
+            color2=(0, 40, 120),
+            key_colors=_rgb(_gradient([(0, 20, 60), (0, 110, 200), (70, 210, 255)], axis="x")),
+            side_colors=_ring([(0, 20, 60), (0, 170, 255), (70, 210, 255)]),
+        )
+    )
+
+    presets.append(
+        _software(
+            "Aurora Pulse",
+            "The aurora gradient breathing in and out",
+            "breathing",
+            brightness=100,
+            speed=75,
+            color1=(16, 255, 144),
+            color2=(150, 60, 255),
+            color_mode=COLOR_DUAL,
+            key_colors=_rgb(_gradient([(16, 255, 144), (0, 196, 255), (150, 60, 255)], axis="x")),
+            side_colors=_ring([(16, 255, 144), (0, 196, 255), (150, 60, 255)]),
+        )
+    )
+
+    # -- animated (on-device, zero host CPU) --------------------------------
+
+    presets.append(
+        _firmware(
+            "Vortex",
+            "Firmware tornado spinning cyan into magenta",
+            "tornado",
+            brightness=100,
+            speed=70,
+            direction="left_to_right",
+            color1=(0, 240, 255),
+            color2=(255, 0, 170),
+            color_mode=COLOR_DUAL,
+            key_colors=_rgb(_radial([(255, 120, 240), (0, 240, 255), (40, 0, 80)])),
+            side_colors=_ring([(0, 240, 255), (255, 0, 170), (0, 240, 255)]),
+        )
+    )
+
+    presets.append(
+        _firmware(
+            "Keypress",
+            "Firmware reactive: every key you hit flashes white",
+            "reactive",
+            brightness=100,
+            color1=(255, 255, 255),
+            color2=(0, 14, 24),
+            color_mode=COLOR_SINGLE,
+            key_colors=_rgb(_gradient([(0, 24, 40), (0, 60, 96)], axis="y")),
+            side_colors=_ring([(0, 40, 64), (0, 140, 200)]),
+        )
+    )
+
     return presets
 
 
 def main() -> int:
     OUT.mkdir(parents=True, exist_ok=True)
+    # Keep timestamps for presets that already exist so regeneration only
+    # rewrites files whose lighting content actually changed.
+    previous: dict[str, tuple[float, float]] = {}
+    for path in OUT.glob("*.json"):
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            previous[str(data.get("name"))] = (
+                float(data.get("created", 0.0)),
+                float(data.get("modified", 0.0)),
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            continue
     for old in OUT.glob("*.json"):
         old.unlink()
     for preset in build_presets():
+        stamp = previous.get(preset.name)
+        if stamp is not None:
+            preset.created, preset.modified = stamp
         path = OUT / f"{preset.name.replace(' ', '_')}.json"
         path.write_text(json.dumps(preset.to_dict(), indent=2) + "\n", encoding="utf-8")
         print(f"wrote {path.relative_to(ROOT)}")

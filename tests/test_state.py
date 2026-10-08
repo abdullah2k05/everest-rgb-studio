@@ -62,11 +62,18 @@ def test_builtin_presets_are_valid():
     assert "Ocean" in names
     assert "Cyberpunk" in names
     assert "Matrix" in names
+    assert "Ultraviolet" in names
+    assert "Prismatic Wave" in names
+    assert len(presets) >= 27
     assert all(p.builtin for p in presets)
     for preset in presets:
+        assert preset.description, f"{preset.name} needs a description"
+        assert preset.state.mode in ("hardware", "software", "custom")
         assert preset.state.brightness in range(0, 101)
         if preset.state.mode == "custom":
             assert len(preset.state.key_colors) == 64
+        for color in list(preset.state.key_colors) + list(preset.state.side_colors):
+            assert len(color) == 3 and all(0 <= channel <= 255 for channel in color)
 
 
 def test_user_preset_lifecycle(tmp_path):

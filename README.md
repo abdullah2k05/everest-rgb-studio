@@ -22,7 +22,9 @@ communication. Runs without root.
 - **Software effects** (rendered on the host, streamed to the keyboard):
   Static, Breathing, Rainbow, Wave, Gradient, Reactive, Fire, Ocean, Matrix
 - **Side LED ring** (44 LEDs) with independent color control
-- **Presets**: save / load / duplicate / import / export, plus 11 built-ins
+- **Presets**: save / load / duplicate / import / export, plus 27 built-ins —
+  static showpieces (Ultraviolet, Nebula, Prism, Synthwave…) and animated ones
+  (Wildfire, Prismatic Wave, Riptide, Vortex…)
 - **Reconnection**: unplug/replug is handled automatically, the last lighting
   state is restored
 - **CLI** for quick control and protocol debugging
@@ -161,6 +163,28 @@ Schema (versioned, evolvable):
 
 `mode` is one of `hardware` (firmware effect), `software` (host-rendered
 effect) or `custom` (per-key map). Missing keys default to black.
+
+### Built-ins
+
+27 ship with the app — regenerate them with `python tools/gen_builtin_presets.py`.
+
+| | |
+|---|---|
+| **Static showpieces** | Ultraviolet, Synthwave, Nuclear, Lava Flow, Prism, Nebula, Midnight Gold, Frostbite, Sakura, Arcade |
+| **Animated (host)** | Wildfire, Prismatic Wave, Riptide, Aurora Pulse |
+| **Animated (firmware)** | Vortex, Keypress, Matrix, Neon Wave |
+| **The originals** | Ocean, Cyberpunk, Sunset, Aurora, Fire, Deep Blue, Purple Night, Red Alert, Minimal White |
+
+The showcase presets are built for contrast: a bright focal pool over a near-black
+board, a full-spectrum sweep, or neon accents punched into a sunset gradient —
+all at 100% brightness with a matching side-ring colour cycle.
+
+![Showcase presets](docs/previews/showcase.png)
+
+Regenerate the picture with
+`python tools/render_presets.py --columns 2 --out docs/previews/showcase.png
+Ultraviolet Synthwave Nuclear "Lava Flow" Prism Nebula "Midnight Gold"
+Frostbite Sakura Arcade`.
 
 ## Troubleshooting
 
